@@ -107,7 +107,7 @@ let rec erase_exp = (e: Zexp.t): Hexp.t => {
   | RPlus(hexp: Hexp.t, zexp: Zexp.t) => Plus(hexp, erase_exp(zexp))
   | LAsc(zexp: Zexp.t, htyp: Htyp.t) => Asc(erase_exp(zexp), htyp) 
   | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => Asc(hexp, erase_typ(ztyp))
-  | NEHole(zexp: Zexp.t) => erase_exp(zexp)
+  | NEHole(zexp: Zexp.t) => NEHole(erase_exp(zexp))
   };
 };
 
