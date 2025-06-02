@@ -89,12 +89,23 @@ type typctx = TypCtx.t(Htyp.t);
 
 exception Unimplemented;
 
-let erase_exp = (e: Zexp.t): Hexp.t => {
+let rec erase_exp = (e: Zexp.t): Hexp.t => {
   // Used to suppress unused variable warnings
   // Okay to remove
-  let _ = e;
-
-  raise(Unimplemented);
+  //let _ = e;
+  switch (e) {
+  | Cursor(hexp: Hexp.t) => hexp
+  | Lam(str: string, typ: Zexp.t) => Lam(str, erase_exp(typ))
+  | LAp(typ: Zexp.t, hexp: Hexp.t) => Ap(erase_exp(typ), hexp)
+  | RAp(hexp: Hexp.t, typ: Zexp.t) => Ap(erase_exp(typ), hexp)
+  | LPlus(typ: Zexp.t, hexp: Hexp.t) => Plus(erase_exp(typ), hexp)
+  | RPlus(hexp: Hexp.t, typ: Zexp.t) => Plus(hexp, erase_exp(typ))
+  | LAsc(typ: Zexp.t, htyp: Htyp.t) => Asc(erase_exp(typ), htyp) /*
+    | RAsc(a: Hexp.t, b: Ztyp.t) =>  raise(Unimplemented)//Asc(Hexp.t, Ztyp.t)
+    | NEHole(typ: Zexp.t) => raise(Unimplemented)//NEHole(typ)*/
+  | _ => raise(Unimplemented)
+  //raise(Unimplemented);
+  };
 };
 
 let syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
