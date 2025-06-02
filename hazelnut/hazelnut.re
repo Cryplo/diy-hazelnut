@@ -89,15 +89,6 @@ type typctx = TypCtx.t(Htyp.t);
 
 exception Unimplemented;
 
-/*
-module Ztyp = {
-  [@deriving (sexp, compare)]
-  type t =
-    | Cursor(Htyp.t)
-    | LArrow(t, Htyp.t)
-    | RArrow(Htyp.t, t);
-};
-*/
 let rec erase_typ = (t: Ztyp.t): Htyp.t => {
   switch(t){
     | Cursor(htyp: Htyp.t) => htyp
@@ -107,9 +98,6 @@ let rec erase_typ = (t: Ztyp.t): Htyp.t => {
 }
 
 let rec erase_exp = (e: Zexp.t): Hexp.t => {
-  // Used to suppress unused variable warnings
-  // Okay to remove
-  //let _ = e;
   switch (e) {
   | Cursor(hexp: Hexp.t) => hexp
   | Lam(str: string, zexp: Zexp.t) => Lam(str, erase_exp(zexp))
@@ -118,11 +106,8 @@ let rec erase_exp = (e: Zexp.t): Hexp.t => {
   | LPlus(zexp: Zexp.t, hexp: Hexp.t) => Plus(erase_exp(zexp), hexp)
   | RPlus(hexp: Hexp.t, zexp: Zexp.t) => Plus(hexp, erase_exp(zexp))
   | LAsc(zexp: Zexp.t, htyp: Htyp.t) => Asc(erase_exp(zexp), htyp) 
-  | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) =>  Asc(hexp, erase_typ(ztyp))
+  | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => Asc(hexp, erase_typ(ztyp))
   | NEHole(zexp: Zexp.t) => erase_exp(zexp)
-  /*  | NEHole(typ: Zexp.t) => raise(Unimplemented)//NEHole(typ)*/
-  //| _ => raise(Unimplemented)
-  //raise(Unimplemented);
   };
 };
 
