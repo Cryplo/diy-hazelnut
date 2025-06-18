@@ -111,10 +111,15 @@ let rec erase_exp = (e: Zexp.t): Hexp.t => {
   };
 };
 
-let syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
+let rec syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
   switch(e){
-    | Var(str: string) => TypCtx.find_opt(str, ctx) //Implement rule 1A
+    | Var(str: string) => TypCtx.find_opt(str, ctx) //Implement rule 1a
     | Lit(_) => Some(Num) //Implement rule 1c
+    | EHole => Some(Hole) //Implement rule 1f
+    | NEHole(hexp: Hexp.t) => switch(syn(ctx, hexp)){ //Implement rule 1g
+      | Some(_) => Some(Hole)
+      | None => None
+    };
     | _ => raise(Unimplemented)
   };
 };
