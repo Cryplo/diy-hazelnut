@@ -115,8 +115,9 @@ let rec syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
   switch (e) {
   | Var(str: string) => TypCtx.find_opt(str, ctx) //Implement rule 1a
   | Lit(_) => Some(Num) //Implement rule 1c
+  | Plus(hexp1: Hexp.t, hexp2: Hexp.t) => ana(ctx, hexp1, Num: Htyp.t) && ana(ctx, hexp2, Num: Htyp.t) ? Some(Num) : None // Implement rule 1d
   | Asc(hexp: Hexp.t, htyp: Htyp.t) =>
-    ana(ctx, hexp, htyp) ? Some(htyp) : None
+    ana(ctx, hexp, htyp) ? Some(htyp) : None //Implement rule 1e
   | EHole => Some(Hole) //Implement rule 1f
   | NEHole(hexp: Hexp.t) =>
     switch (syn(ctx, hexp)) {
