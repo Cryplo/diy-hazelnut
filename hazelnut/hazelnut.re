@@ -90,12 +90,12 @@ type typctx = TypCtx.t(Htyp.t);
 exception Unimplemented;
 
 let rec erase_typ = (t: Ztyp.t): Htyp.t => {
-  switch(t){
-    | Cursor(htyp: Htyp.t) => htyp
-    | LArrow(ztyp: Ztyp.t, htyp:Htyp.t) => Arrow(erase_typ(ztyp), htyp)
-    | RArrow(htyp:Htyp.t, ztyp:Ztyp.t) => Arrow(htyp, erase_typ(ztyp))
-  }
-}
+  switch (t) {
+  | Cursor(htyp: Htyp.t) => htyp
+  | LArrow(ztyp: Ztyp.t, htyp: Htyp.t) => Arrow(erase_typ(ztyp), htyp)
+  | RArrow(htyp: Htyp.t, ztyp: Ztyp.t) => Arrow(htyp, erase_typ(ztyp))
+  };
+};
 
 let rec erase_exp = (e: Zexp.t): Hexp.t => {
   switch (e) {
@@ -105,42 +105,49 @@ let rec erase_exp = (e: Zexp.t): Hexp.t => {
   | RAp(hexp: Hexp.t, zexp: Zexp.t) => Ap(hexp, erase_exp(zexp))
   | LPlus(zexp: Zexp.t, hexp: Hexp.t) => Plus(erase_exp(zexp), hexp)
   | RPlus(hexp: Hexp.t, zexp: Zexp.t) => Plus(hexp, erase_exp(zexp))
-  | LAsc(zexp: Zexp.t, htyp: Htyp.t) => Asc(erase_exp(zexp), htyp) 
+  | LAsc(zexp: Zexp.t, htyp: Htyp.t) => Asc(erase_exp(zexp), htyp)
   | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => Asc(hexp, erase_typ(ztyp))
   | NEHole(zexp: Zexp.t) => NEHole(erase_exp(zexp))
   };
 };
 
 let rec syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
-  switch(e){
-    | Var(str: string) => TypCtx.find_opt(str, ctx) //Implement rule 1a
-    | Lit(_) => Some(Num) //Implement rule 1c
-    | EHole => Some(Hole) //Implement rule 1f
-    | NEHole(hexp: Hexp.t) => switch(syn(ctx, hexp)){ //Implement rule 1g
-      | Some(_) => Some(Hole)
-      | None => None
-    };
-    | _ => raise(Unimplemented)
+  switch (e) {
+  | Var(str: string) => TypCtx.find_opt(str, ctx) //Implement rule 1a
+  | Lit(_) => Some(Num) //Implement rule 1c
+  | Asc(hexp: Hexp.t, htyp: Htyp.t) =>
+    ana(ctx, hexp, htyp) ? Some(htyp) : None
+  | EHole => Some(Hole) //Implement rule 1f
+  | NEHole(hexp: Hexp.t) =>
+    switch (syn(ctx, hexp)) {
+    //Implement rule 1g
+    | Some(_) => Some(Hole)
+    | None => None
+    }
+  | _ => raise(Unimplemented)
   };
 };
 
 let rec consistent = (t1: Htyp.t, t2: Htyp.t): bool => {
-  switch(t1, t2){ // Implement 3a-d
-    | (Hole, _) => true
-    | (_, Hole) => true
-    | (Num, Num) => true
-    | (Arrow(a, b), Arrow(c, d)) => consistent(a, b) && consistent(c, d)
-    | _ => false
+  switch (t1, t2) {
+  // Implement 3a-d
+  | (Hole, _) => true
+  | (_, Hole) => true
+  | (Num, Num) => true
+  | (Arrow(a, b), Arrow(c, d)) => consistent(a, b) && consistent(c, d)
+  | _ => false
   };
 };
 
 let ana = (ctx: typctx, e: Hexp.t, t: Htyp.t): bool => {
-  switch(e){
-    | Lam(_, _) => raise(Unimplemented)
-    | _ => switch (syn(ctx, e)){ // Implement 2b
-      | Some(t1) => consistent(t1, t)
-      | None => false
-    };
+  switch (e) {
+  | Lam(_, _) => raise(Unimplemented)
+  | _ =>
+    switch (syn(ctx, e)) {
+    // Implement 2b
+    | Some(t1) => consistent(t1, t)
+    | None => false
+    }
   };
 };
 

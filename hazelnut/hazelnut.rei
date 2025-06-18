@@ -83,8 +83,10 @@ type typctx = TypCtx.t(Htyp.t);
 
 exception Unimplemented;
 
+let erase_typ: Ztyp.t => Htyp.t;
 let erase_exp: Zexp.t => Hexp.t;
 let syn: (typctx, Hexp.t) => option(Htyp.t);
+let consistent: (Htyp.t, Htyp.t) => bool;
 let ana: (typctx, Hexp.t, Htyp.t) => bool;
 let syn_action:
   (typctx, (Zexp.t, Htyp.t), Action.t) => option((Zexp.t, Htyp.t));
