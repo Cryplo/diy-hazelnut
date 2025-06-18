@@ -112,15 +112,14 @@ let rec erase_exp = (e: Zexp.t): Hexp.t => {
 };
 
 let syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
-  // Used to suppress unused variable warnings
-  // Okay to remove
-  let _ = ctx;
-  let _ = e;
+  switch(e){
+    | Var(str: string) => TypCtx.find_opt(str, ctx) //Implement rule 1A
+    | Lit(_) => Some(Num) //Implement rule 1c
+    | _ => raise(Unimplemented)
+  };
+};
 
-  raise(Unimplemented);
-}
-
-and ana = (ctx: typctx, e: Hexp.t, t: Htyp.t): bool => {
+let ana = (ctx: typctx, e: Hexp.t, t: Htyp.t): bool => {
   // Used to suppress unused variable warnings
   // Okay to remove
   let _ = ctx;
