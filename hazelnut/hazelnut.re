@@ -114,6 +114,14 @@ let rec erase_exp = (e: Zexp.t): Hexp.t => {
 let rec syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
   switch (e) {
   | Var(str: string) => TypCtx.find_opt(str, ctx) //Implement rule 1a
+  // Implement rule 1b
+  | Ap(hexp1: Hexp.t, hexp2: Hexp.t) => switch(syn(ctx, hexp1)){
+    | Some(t1: Htyp.t) => switch(match_arrow(t1)){
+      | Arrow(t2: Htyp.t, t3: Htyp.t) => ana(ctx, hexp2, t2) ? Some(t3) : None
+      | _ => None
+    };
+    | None => None
+  };
   | Lit(_) => Some(Num) //Implement rule 1c
   | Plus(hexp1: Hexp.t, hexp2: Hexp.t) => ana(ctx, hexp1, Num: Htyp.t) && ana(ctx, hexp2, Num: Htyp.t) ? Some(Num) : None // Implement rule 1d
   | Asc(hexp: Hexp.t, htyp: Htyp.t) =>
