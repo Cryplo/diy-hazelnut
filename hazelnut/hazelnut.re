@@ -140,9 +140,24 @@ and consistent = (t1: Htyp.t, t2: Htyp.t): bool => {
   };
 }
 
+and match_arrow = (t: Htyp.t): Htyp.t => {
+  switch(t){
+    | Arrow(t1: Htyp.t, t2: Htyp.t) => Arrow(t1, t2)
+    | Hole => Arrow(Hole, Hole)
+    | _ => raise(Unimplemented)
+  };
+}
+
 and ana = (ctx: typctx, e: Hexp.t, t: Htyp.t): bool => {
   switch (e) {
-  | Lam(_, _) => raise(Unimplemented)
+  //Implement 2a
+  | Lam(str: string, hexp: Hexp.t) => switch(match_arrow(t)){
+    | Arrow(t1: Htyp.t, t2: Htyp.t) => {
+      let newctx = TypCtx.add(str, t1, ctx);
+      ana(newctx, hexp, t2);
+    }
+    | _ => raise(Unimplemented)
+  };
   | _ =>
     switch (syn(ctx, e)) {
     // Implement 2b
