@@ -124,14 +124,24 @@ let rec syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
   };
 };
 
-let ana = (ctx: typctx, e: Hexp.t, t: Htyp.t): bool => {
-  // Used to suppress unused variable warnings
-  // Okay to remove
-  let _ = ctx;
-  let _ = e;
-  let _ = t;
+let rec consistent = (t1: Htyp.t, t2: Htyp.t): bool => {
+  switch(t1, t2){ // Implement 3a-d
+    | (Hole, _) => true
+    | (_, Hole) => true
+    | (Num, Num) => true
+    | (Arrow(a, b), Arrow(c, d)) => consistent(a, b) && consistent(c, d)
+    | _ => false
+  };
+};
 
-  raise(Unimplemented);
+let ana = (ctx: typctx, e: Hexp.t, t: Htyp.t): bool => {
+  switch(e){
+    | Lam(_, _) => raise(Unimplemented)
+    | _ => switch (syn(ctx, e)){ // Implement 2b
+      | Some(t1) => consistent(t1, t)
+      | None => false
+    };
+  };
 };
 
 let syn_action =
