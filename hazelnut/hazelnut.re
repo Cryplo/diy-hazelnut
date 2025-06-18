@@ -126,9 +126,9 @@ let rec syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
     }
   | _ => raise(Unimplemented)
   };
-};
+}
 
-let rec consistent = (t1: Htyp.t, t2: Htyp.t): bool => {
+and consistent = (t1: Htyp.t, t2: Htyp.t): bool => {
   switch (t1, t2) {
   // Implement 3a-d
   | (Hole, _) => true
@@ -137,9 +137,9 @@ let rec consistent = (t1: Htyp.t, t2: Htyp.t): bool => {
   | (Arrow(a, b), Arrow(c, d)) => consistent(a, b) && consistent(c, d)
   | _ => false
   };
-};
+}
 
-let ana = (ctx: typctx, e: Hexp.t, t: Htyp.t): bool => {
+and ana = (ctx: typctx, e: Hexp.t, t: Htyp.t): bool => {
   switch (e) {
   | Lam(_, _) => raise(Unimplemented)
   | _ =>
