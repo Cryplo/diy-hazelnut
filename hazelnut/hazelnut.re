@@ -115,15 +115,20 @@ let rec syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
   switch (e) {
   | Var(str: string) => TypCtx.find_opt(str, ctx) //Implement rule 1a
   // Implement rule 1b
-  | Ap(hexp1: Hexp.t, hexp2: Hexp.t) => switch(syn(ctx, hexp1)){
-    | Some(t1: Htyp.t) => switch(match_arrow(t1)){
-      | Arrow(t2: Htyp.t, t3: Htyp.t) => ana(ctx, hexp2, t2) ? Some(t3) : None
+  | Ap(hexp1: Hexp.t, hexp2: Hexp.t) =>
+    switch (syn(ctx, hexp1)) {
+    | Some(t1: Htyp.t) =>
+      switch (match_arrow(t1)) {
+      | Arrow(t2: Htyp.t, t3: Htyp.t) =>
+        ana(ctx, hexp2, t2) ? Some(t3) : None
       | _ => None
-    };
+      }
     | None => None
-  };
+    }
   | Lit(_) => Some(Num) //Implement rule 1c
-  | Plus(hexp1: Hexp.t, hexp2: Hexp.t) => ana(ctx, hexp1, Num: Htyp.t) && ana(ctx, hexp2, Num: Htyp.t) ? Some(Num) : None // Implement rule 1d
+  | Plus(hexp1: Hexp.t, hexp2: Hexp.t) =>
+    ana(ctx, hexp1, Num: Htyp.t) && ana(ctx, hexp2, Num: Htyp.t)
+      ? Some(Num) : None // Implement rule 1d
   | Asc(hexp: Hexp.t, htyp: Htyp.t) =>
     ana(ctx, hexp, htyp) ? Some(htyp) : None //Implement rule 1e
   | EHole => Some(Hole) //Implement rule 1f
@@ -149,23 +154,23 @@ and consistent = (t1: Htyp.t, t2: Htyp.t): bool => {
 }
 
 and match_arrow = (t: Htyp.t): Htyp.t => {
-  switch(t){
-    | Arrow(t1: Htyp.t, t2: Htyp.t) => Arrow(t1, t2)
-    | Hole => Arrow(Hole, Hole)
-    | _ => raise(Unimplemented)
+  switch (t) {
+  | Arrow(t1: Htyp.t, t2: Htyp.t) => Arrow(t1, t2)
+  | Hole => Arrow(Hole, Hole)
+  | _ => raise(Unimplemented)
   };
 }
 
 and ana = (ctx: typctx, e: Hexp.t, t: Htyp.t): bool => {
   switch (e) {
   //Implement 2a
-  | Lam(str: string, hexp: Hexp.t) => switch(match_arrow(t)){
-    | Arrow(t1: Htyp.t, t2: Htyp.t) => {
+  | Lam(str: string, hexp: Hexp.t) =>
+    switch (match_arrow(t)) {
+    | Arrow(t1: Htyp.t, t2: Htyp.t) =>
       let newctx = TypCtx.add(str, t1, ctx);
       ana(newctx, hexp, t2);
-    }
     | _ => raise(Unimplemented)
-  };
+    }
   | _ =>
     switch (syn(ctx, e)) {
     // Implement 2b
@@ -175,17 +180,93 @@ and ana = (ctx: typctx, e: Hexp.t, t: Htyp.t): bool => {
   };
 };
 
-let syn_action =
-    (ctx: typctx, (e: Zexp.t, t: Htyp.t), a: Action.t)
-    : option((Zexp.t, Htyp.t)) => {
-  // Used to suppress unused variable warnings
-  // Okay to remove
-  let _ = ctx;
-  let _ = e;
-  let _ = t;
-  let _ = a;
+let rec syn_action =
+        (ctx: typctx, (e: Zexp.t, t: Htyp.t), a: Action.t)
+        : option((Zexp.t, Htyp.t)) => {
+  switch(a){
+    | Move(d: Dir.t) => switch(d){
+      | Child(_) => {
+        let new_zexp = move_child(ctx, e, d);
+        let htyp = cursor_htyp_from_zexp(ctx, new_zexp);
+        switch(htyp){
+          | Some(content) => Some((new_zexp, content))
+          | None => raise(Unimplemented)
+        }
+      };
+      | _ => raise(Unimplemented)
+    };
+    | _ => raise(Unimplemented)
+  };
+}
 
-  raise(Unimplemented);
+// Need to keep the action argument to keep track of first or second child
+and move_child = (ctx: typctx, e: Zexp.t, d: Dir.t) : Zexp.t => {
+  switch(d){
+    | Child(c: Child.t) => switch(e){
+      //Move cursor down at cursor spot
+      | Cursor(hexp: Hexp.t) =>
+        switch (hexp) {
+        | Var(str: string) => raise(Unimplemented) // cant return a child if cursor is on the variable
+        | Lam(str: string, hexp: Hexp.t) => Lam(str, Cursor(hexp))
+        | Ap(hexp1: Hexp.t, hexp2: Hexp.t) => 
+          switch (c) {
+          | One => LAp(Cursor(hexp1), hexp2)
+          | Two => RAp(hexp1, Cursor(hexp2))
+          }
+        | Lit(int) => raise(Unimplemented)
+        | Plus(hexp1: Hexp.t, hexp2: Hexp.t) =>
+          switch (c) {
+          | One => LPlus(Cursor(hexp1), hexp2)
+          | Two => RPlus(hexp1, Cursor(hexp2))
+          }
+        | Asc(hexp: Hexp.t, htyp: Htyp.t) =>
+          switch (c) {
+          | One => LAsc(Cursor(hexp), htyp)
+          | Two => RAsc(hexp, Cursor(htyp))
+          }
+        | EHole => raise(Unimplemented)
+        | NEHole(hexp: Hexp.t) => NEHole(Cursor(hexp))
+        }
+      //recursively move down until reaching cursor
+      | Lam(str: string, zexp: Zexp.t) =>
+        Lam(str, move_child(ctx, zexp, d))
+      | LAp(zexp: Zexp.t, hexp: Hexp.t) =>
+        LAp(move_child(ctx, zexp, d), hexp)
+      | RAp(hexp: Hexp.t, zexp: Zexp.t) =>
+        RAp(hexp, move_child(ctx, zexp, d))
+      | LPlus(zexp: Zexp.t, hexp: Hexp.t) =>
+        LPlus(move_child(ctx, zexp, d), hexp)
+      | RPlus(hexp: Hexp.t, zexp: Zexp.t) =>
+        RPlus(hexp, move_child(ctx, zexp, d))
+      | LAsc(zexp: Zexp.t, htyp: Htyp.t) =>
+        LAsc(move_child(ctx, zexp, d), htyp)
+      | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => raise(Unimplemented)//this is possible to do, see first test of type_action
+      | NEHole(zexp: Zexp.t) => NEHole(move_child(ctx, zexp, d))
+    }
+    | _ => raise(Unimplemented) //this shouldn't ever be reached
+  };
+}
+
+and cursor_htyp_from_zexp = (ctx: typctx, e: Zexp.t): option(Htyp.t) => {
+  switch(e){
+    | Cursor(hexp: Hexp.t) => syn(ctx, hexp)
+    | Lam(str: string, zexp: Zexp.t) => cursor_htyp_from_zexp(ctx, zexp)
+      | LAp(zexp: Zexp.t, hexp: Hexp.t) => cursor_htyp_from_zexp(ctx, zexp)
+      | RAp(hexp: Hexp.t, zexp: Zexp.t) => cursor_htyp_from_zexp(ctx, zexp)
+      | LPlus(zexp: Zexp.t, hexp: Hexp.t) => cursor_htyp_from_zexp(ctx, zexp)
+      | RPlus(hexp: Hexp.t, zexp: Zexp.t) => cursor_htyp_from_zexp(ctx, zexp)
+      | LAsc(zexp: Zexp.t, htyp: Htyp.t) => cursor_htyp_from_zexp(ctx, zexp)
+      | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => cursor_htyp_from_ztyp(ctx, ztyp)
+      | NEHole(zexp: Zexp.t) => cursor_htyp_from_zexp(ctx, zexp)
+  };
+}
+
+and cursor_htyp_from_ztyp = (ctx: typctx, t: Ztyp.t): option(Htyp.t) => {
+  switch(t){
+    | Cursor(htyp: Htyp.t) => Some(htyp)
+    | LArrow(t: Ztyp.t, htyp: Htyp.t) => cursor_htyp_from_ztyp(ctx, t)
+    | RArrow(htyp: Htyp.t, t: Ztyp.t) => cursor_htyp_from_ztyp(ctx, t)
+  };
 }
 
 and ana_action =
