@@ -189,7 +189,7 @@ let rec syn_action =
     | Move(d: Dir.t) => switch(d){
       | Child(_) => {
         let new_zexp = move_child(ctx, e, d);
-        let syn_typ = syn(ctx, erase_exp(e));
+        let syn_typ = syn(ctx, erase_exp(new_zexp));
         switch(syn_typ){
           | Some(contents) => Some((new_zexp, contents))
           | None => None
@@ -197,13 +197,21 @@ let rec syn_action =
       };
       | Parent => {
         let new_zexp = move_parent(ctx, e);
-        let syn_typ = syn(ctx, erase_exp(e));
+        let syn_typ = syn(ctx, erase_exp(new_zexp));
         switch(syn_typ){
           | Some(contents) => Some((new_zexp, contents))
           | None => None
         }
       }
     };
+    | Del => {
+      let new_zexp = delete(ctx, e);
+      let syn_typ = syn(ctx, erase_exp(new_zexp));
+      switch(syn_typ){
+        | Some(contents) => Some((new_zexp, contents))
+        | None => None
+      }
+    }
     | _ => raise(Unimplemented)
   };
 }
@@ -309,6 +317,28 @@ and move_parent_ztyp = (ctx: typctx, t: Ztyp.t) : Ztyp.t => {
       | Cursor(htyp2: Htyp.t) => Cursor(Arrow(htyp, htyp2))
       | _ => RArrow(htyp, move_parent_ztyp(ctx, t))
     }
+  }
+}
+
+and delete = (ctx: typctx, e: Zexp.t) : Zexp.t => {
+  switch(e){
+    | Cursor(_) => Cursor(EHole)
+    | Lam(str: string, zexp: Zexp.t) => Lam(str, delete(ctx, zexp))
+    | LAp(zexp: Zexp.t, hexp: Hexp.t) => LAp(delete(ctx, zexp), hexp)
+    | RAp(hexp: Hexp.t, zexp: Zexp.t) => RAp(hexp, delete(ctx, zexp))
+    | LPlus(zexp: Zexp.t, hexp: Hexp.t) => LPlus(delete(ctx, zexp), hexp)
+    | RPlus(hexp: Hexp.t, zexp: Zexp.t) => RPlus(hexp, delete(ctx, zexp))
+    | LAsc(zexp: Zexp.t, htyp: Htyp.t) => LAsc(delete(ctx, zexp), htyp)
+    | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, delete_typ(ctx, ztyp))
+    | NEHole(zexp: Zexp.t) => NEHole(delete(ctx, zexp))
+  }
+}
+
+and delete_typ = (ctx: typctx, t: Ztyp.t) : Ztyp.t => {
+  switch(t){
+    | Cursor(_) => Cursor(Hole)
+    | LArrow(ztyp: Ztyp.t, htyp: Htyp.t) => LArrow(delete_typ(ctx, ztyp), htyp)
+    | RArrow(htyp: Htyp.t, ztyp: Ztyp.t) => RArrow(htyp, delete_typ(ctx, ztyp))
   }
 }
 /*
