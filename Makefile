@@ -21,4 +21,5 @@ deps:
 
 .PHONY: test
 test:
+	dune build test
 	dune test
