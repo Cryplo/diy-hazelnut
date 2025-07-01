@@ -194,14 +194,15 @@ let rec syn_action =
           | Some(contents) => Some((new_zexp, contents))
           | None => None
         }
-        /*
-        let htyp = cursor_htyp_from_zexp(ctx, new_zexp);
-        switch(htyp){
-          | Some(content) => Some((new_zexp, content))
-          | None => raise(Unimplemented)
-        }*/
       };
-      | _ => raise(Unimplemented)
+      | Parent => {
+        let new_zexp = move_parent(ctx, e);
+        let syn_typ = syn(ctx, erase_exp(e));
+        switch(syn_typ){
+          | Some(contents) => Some((new_zexp, contents))
+          | None => None
+        }
+      }
     };
     | _ => raise(Unimplemented)
   };
@@ -253,7 +254,62 @@ and move_child = (ctx: typctx, e: Zexp.t, d: Dir.t) : Zexp.t => {
       | _ => raise(Unimplemented)
     }
     | _ => raise(Unimplemented) //this shouldn't ever be reached
-  };
+  }
+}
+
+and move_parent = (ctx: typctx, e: Zexp.t) : Zexp.t => {
+  switch(e){
+    | Cursor(hexp: Hexp.t) => Cursor(hexp)
+    | Lam(str: string, zexp: Zexp.t) => switch(zexp){
+      | Cursor(hexp: Hexp.t) => Cursor(Lam(str, hexp)) //move cursor up onto Lam
+      | _ => Lam(str, move_parent(ctx, zexp))
+    }
+    | LAp(zexp: Zexp.t, hexp: Hexp.t) => switch(zexp){
+      | Cursor(hexp2: Hexp.t) => Cursor(Ap(hexp2, hexp))
+      | _ => LAp(move_parent(ctx, zexp), hexp)
+    }
+    | RAp(hexp: Hexp.t, zexp: Zexp.t) => switch(zexp){
+      | Cursor(hexp2: Hexp.t) => Cursor(Ap(hexp, hexp2))
+      | _ => RAp(hexp, move_parent(ctx, zexp))
+    }
+    | LPlus(zexp: Zexp.t, hexp: Hexp.t) => switch(zexp){
+      | Cursor(hexp2: Hexp.t) => Cursor(Plus(hexp2, hexp))
+      | _ => LPlus(move_parent(ctx, zexp), hexp)
+    }
+    | RPlus(hexp: Hexp.t, zexp: Zexp.t) => switch(zexp){
+      | Cursor(hexp2: Hexp.t) => Cursor(Plus(hexp, hexp2))
+      | _ => RPlus(hexp, move_parent(ctx, zexp))
+    }
+    | LAsc(zexp: Zexp.t, htyp: Htyp.t) => switch(zexp){
+      | Cursor(hexp: Hexp.t) => Cursor(Asc(hexp, htyp))
+      | _ => LAsc(move_parent(ctx, zexp), htyp)
+    }
+    | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => switch(ztyp){
+      | Cursor(htyp: Htyp.t) => Cursor(Asc(hexp, htyp))
+      | _ => RAsc(hexp, move_parent_ztyp(ctx, ztyp))
+    }
+    | NEHole(zexp: Zexp.t) => switch(zexp){
+      | Cursor(hexp: Hexp.t) => switch(hexp){
+        | EHole => Cursor(EHole)
+        | _ => Cursor(NEHole(hexp))
+      }
+      | _ => NEHole(move_parent(ctx, zexp))
+    }
+  }
+}
+
+and move_parent_ztyp = (ctx: typctx, t: Ztyp.t) : Ztyp.t => {
+  switch(t){
+    | Cursor(htyp: Htyp.t) => Cursor(htyp)
+    | LArrow(ztyp: Ztyp.t, htyp: Htyp.t) => switch(ztyp){
+      | Cursor(htyp2: Htyp.t) => Cursor(Arrow(htyp2, htyp))
+      | _ => LArrow(move_parent_ztyp(ctx, t), htyp)
+    }
+    | RArrow(htyp: Htyp.t, ztyp: Ztyp.t) => switch(ztyp){
+      | Cursor(htyp2: Htyp.t) => Cursor(Arrow(htyp, htyp2))
+      | _ => RArrow(htyp, move_parent_ztyp(ctx, t))
+    }
+  }
 }
 /*
 and cursor_htyp_from_zexp = (ctx: typctx, e: Zexp.t): option(Htyp.t) => {
