@@ -5,7 +5,7 @@ let compare_string = String.compare;
 let compare_int = Int.compare;
 
 module Htyp = {
-  [@deriving (sexp, compare)]
+  [@deriving (sexp, compare, show({with_path: false}))]
   type t =
     | Arrow(t, t)
     | Num
@@ -13,7 +13,7 @@ module Htyp = {
 };
 
 module Hexp = {
-  [@deriving (sexp, compare)]
+  [@deriving (sexp, compare, show({with_path: false}))]
   type t =
     | Var(string)
     | Lam(string, t)
@@ -26,7 +26,7 @@ module Hexp = {
 };
 
 module Ztyp = {
-  [@deriving (sexp, compare)]
+  [@deriving (sexp, compare, show({with_path: false}))]
   type t =
     | Cursor(Htyp.t)
     | LArrow(t, Htyp.t)
@@ -34,7 +34,7 @@ module Ztyp = {
 };
 
 module Zexp = {
-  [@deriving (sexp, compare)]
+  [@deriving (sexp, compare, show({with_path: false}))]
   type t =
     | Cursor(Hexp.t)
     | Lam(string, t)
@@ -111,7 +111,6 @@ let rec erase_exp = (e: Zexp.t): Hexp.t => {
   };
 };
 
-
 let rec syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
   switch (e) {
   | Var(str: string) => TypCtx.find_opt(str, ctx) //Implement rule 1a
@@ -132,7 +131,7 @@ let rec syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
     ana(ctx, hexp1, Num: Htyp.t) && ana(ctx, hexp2, Num: Htyp.t)
       ? Some(Num) : None // Implement rule 1d
   | Asc(hexp: Hexp.t, htyp: Htyp.t) =>
-    ana(ctx, hexp, htyp) ? Some(htyp) : None //Implement rule 1e
+    ana(ctx, hexp, htyp) ? Some(htyp) : None //Implement rule 1e+
   | EHole => Some(Hole) //Implement rule 1f
   | NEHole(hexp: Hexp.t) =>
     switch (syn(ctx, hexp)) {
@@ -185,201 +184,216 @@ let rec syn_action =
         (ctx: typctx, (e: Zexp.t, t: Htyp.t), a: Action.t)
         : option((Zexp.t, Htyp.t)) => {
   ignore(t);
-  switch(a){
-    | Move(d: Dir.t) => switch(d){
-      | Child(_) => {
-        let new_zexp = move_child(ctx, e, d);
-        let syn_typ = syn(ctx, erase_exp(new_zexp));
-        switch(syn_typ){
-          | Some(contents) => Some((new_zexp, contents))
-          | None => None
-        }
+  switch (a) {
+  | Move(d: Dir.t) =>
+    switch (d) {
+    | Child(_) =>
+      let new_zexp = move_child(ctx, e, d);
+      let syn_typ = syn(ctx, erase_exp(new_zexp));
+      switch (syn_typ) {
+      | Some(contents) => Some((new_zexp, contents))
+      | None => None
       };
-      | Parent => {
-        let new_zexp = move_parent(ctx, e);
-        let syn_typ = syn(ctx, erase_exp(new_zexp));
-        switch(syn_typ){
-          | Some(contents) => Some((new_zexp, contents))
-          | None => None
-        }
-      }
+    | Parent =>
+      let new_zexp = move_parent(ctx, e);
+      let syn_typ = syn(ctx, erase_exp(new_zexp));
+      switch (syn_typ) {
+      | Some(contents) => Some((new_zexp, contents))
+      | None => None
+      };
+    }
+  | Del =>
+    let new_zexp = delete(ctx, e);
+    let syn_typ = syn(ctx, erase_exp(new_zexp));
+    switch (syn_typ) {
+    | Some(contents) => Some((new_zexp, contents))
+    | None => None
     };
-    | Del => {
-      let new_zexp = delete(ctx, e);
-      let syn_typ = syn(ctx, erase_exp(new_zexp));
-      switch(syn_typ){
-        | Some(contents) => Some((new_zexp, contents))
-        | None => None
-      }
-    }
-    | Finish => {
-      let new_zexp = finish(ctx, e);
-      let syn_typ = syn(ctx, erase_exp(new_zexp));
-      switch(syn_typ){
-        | Some(contents) => Some((new_zexp, contents))
-        | None => None
-      }
-    }
-    | _ => raise(Unimplemented)
+  | Finish =>
+    let new_zexp = finish(ctx, e);
+    let syn_typ = syn(ctx, erase_exp(new_zexp));
+    switch (syn_typ) {
+    | Some(contents) => Some((new_zexp, contents))
+    | None => None
+    };
+  | _ => raise(Unimplemented)
   };
 }
 
 // Need to keep the action argument to keep track of first or second child
-and move_child = (ctx: typctx, e: Zexp.t, d: Dir.t) : Zexp.t => {
-  switch(d){
-    | Child(c: Child.t) => switch(e){
-      //Move cursor down at cursor spot
-      | Cursor(hexp: Hexp.t) =>
-        switch (hexp) {
-        | Var(_) => raise(Unimplemented) // cant return a child if cursor is on the variable
-        | Lam(str: string, hexp: Hexp.t) => Lam(str, Cursor(hexp))
-        | Ap(hexp1: Hexp.t, hexp2: Hexp.t) => 
-          switch (c) {
-          | One => LAp(Cursor(hexp1), hexp2)
-          | Two => RAp(hexp1, Cursor(hexp2))
-          }
-        | Lit(_) => raise(Unimplemented)
-        | Plus(hexp1: Hexp.t, hexp2: Hexp.t) =>
-          switch (c) {
-          | One => LPlus(Cursor(hexp1), hexp2)
-          | Two => RPlus(hexp1, Cursor(hexp2))
-          }
-        | Asc(hexp: Hexp.t, htyp: Htyp.t) =>
-          switch (c) {
-          | One => LAsc(Cursor(hexp), htyp)
-          | Two => RAsc(hexp, Cursor(htyp))
-          }
-        | EHole => raise(Unimplemented)
-        | NEHole(hexp: Hexp.t) => NEHole(Cursor(hexp))
+and move_child = (ctx: typctx, e: Zexp.t, d: Dir.t): Zexp.t => {
+  switch (d) {
+  | Child(c: Child.t) =>
+    switch (e) {
+    //Move cursor down at cursor spot
+    | Cursor(hexp: Hexp.t) =>
+      switch (hexp) {
+      | Var(_) => raise(Unimplemented) // cant return a child if cursor is on the variable
+      | Lam(str: string, hexp: Hexp.t) => Lam(str, Cursor(hexp))
+      | Ap(hexp1: Hexp.t, hexp2: Hexp.t) =>
+        switch (c) {
+        | One => LAp(Cursor(hexp1), hexp2)
+        | Two => RAp(hexp1, Cursor(hexp2))
         }
-      //recursively move down until reaching cursor
-      | Lam(str: string, zexp: Zexp.t) =>
-        Lam(str, move_child(ctx, zexp, d))
-      | LAp(zexp: Zexp.t, hexp: Hexp.t) =>
-        LAp(move_child(ctx, zexp, d), hexp)
-      | RAp(hexp: Hexp.t, zexp: Zexp.t) =>
-        RAp(hexp, move_child(ctx, zexp, d))
-      | LPlus(zexp: Zexp.t, hexp: Hexp.t) =>
-        LPlus(move_child(ctx, zexp, d), hexp)
-      | RPlus(hexp: Hexp.t, zexp: Zexp.t) =>
-        RPlus(hexp, move_child(ctx, zexp, d))
-      | LAsc(zexp: Zexp.t, htyp: Htyp.t) =>
-        LAsc(move_child(ctx, zexp, d), htyp)
-      | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, move_child_ztyp(ctx, ztyp, d))
-      | NEHole(zexp: Zexp.t) => NEHole(move_child(ctx, zexp, d))
-    }
-    | _ => raise(Unimplemented) //this shouldn't ever be reached
-  }
-}
-
-and move_child_ztyp = (ctx: typctx, t: Ztyp.t, d: Dir.t) : Ztyp.t => {
-  switch(t){
-    | Cursor(htyp: Htyp.t) => switch(htyp){
-      | Arrow(htyp1: Htyp.t, htyp2: Htyp.t) => switch(d){
-        | Child(c: Child.t) => switch(c){
-          | One => LArrow(Cursor(htyp1), htyp2)
-          | Two => RArrow(htyp1, Cursor(htyp2))
+      | Lit(_) => raise(Unimplemented)
+      | Plus(hexp1: Hexp.t, hexp2: Hexp.t) =>
+        switch (c) {
+        | One => LPlus(Cursor(hexp1), hexp2)
+        | Two => RPlus(hexp1, Cursor(hexp2))
         }
-        | Parent => Cursor(htyp)
+      | Asc(hexp: Hexp.t, htyp: Htyp.t) =>
+        switch (c) {
+        | One => LAsc(Cursor(hexp), htyp)
+        | Two => RAsc(hexp, Cursor(htyp))
+        }
+      | EHole => raise(Unimplemented)
+      | NEHole(hexp: Hexp.t) => NEHole(Cursor(hexp))
       }
-      | _ => Cursor(htyp)
+    //recursively move down until reaching cursor
+    | Lam(str: string, zexp: Zexp.t) => Lam(str, move_child(ctx, zexp, d))
+    | LAp(zexp: Zexp.t, hexp: Hexp.t) => LAp(move_child(ctx, zexp, d), hexp)
+    | RAp(hexp: Hexp.t, zexp: Zexp.t) => RAp(hexp, move_child(ctx, zexp, d))
+    | LPlus(zexp: Zexp.t, hexp: Hexp.t) =>
+      LPlus(move_child(ctx, zexp, d), hexp)
+    | RPlus(hexp: Hexp.t, zexp: Zexp.t) =>
+      RPlus(hexp, move_child(ctx, zexp, d))
+    | LAsc(zexp: Zexp.t, htyp: Htyp.t) =>
+      LAsc(move_child(ctx, zexp, d), htyp)
+    | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) =>
+      RAsc(hexp, move_child_ztyp(ctx, ztyp, d))
+    | NEHole(zexp: Zexp.t) => NEHole(move_child(ctx, zexp, d))
     }
-    | LArrow(ztyp: Ztyp.t, htyp: Htyp.t) => LArrow(move_child_ztyp(ctx, ztyp, d), htyp)
-    | RArrow(htyp: Htyp.t, ztyp: Ztyp.t) => RArrow(htyp, move_child_ztyp(ctx, ztyp, d))
-  }
+  | _ => raise(Unimplemented) //this shouldn't ever be reached
+  };
 }
-and move_parent = (ctx: typctx, e: Zexp.t) : Zexp.t => {
-  switch(e){
-    | Cursor(hexp: Hexp.t) => Cursor(hexp)
-    | Lam(str: string, zexp: Zexp.t) => switch(zexp){
-      | Cursor(hexp: Hexp.t) => Cursor(Lam(str, hexp)) //move cursor up onto Lam
-      | _ => Lam(str, move_parent(ctx, zexp))
-    }
-    | LAp(zexp: Zexp.t, hexp: Hexp.t) => switch(zexp){
-      | Cursor(hexp2: Hexp.t) => Cursor(Ap(hexp2, hexp))
-      | _ => LAp(move_parent(ctx, zexp), hexp)
-    }
-    | RAp(hexp: Hexp.t, zexp: Zexp.t) => switch(zexp){
-      | Cursor(hexp2: Hexp.t) => Cursor(Ap(hexp, hexp2))
-      | _ => RAp(hexp, move_parent(ctx, zexp))
-    }
-    | LPlus(zexp: Zexp.t, hexp: Hexp.t) => switch(zexp){
-      | Cursor(hexp2: Hexp.t) => Cursor(Plus(hexp2, hexp))
-      | _ => LPlus(move_parent(ctx, zexp), hexp)
-    }
-    | RPlus(hexp: Hexp.t, zexp: Zexp.t) => switch(zexp){
-      | Cursor(hexp2: Hexp.t) => Cursor(Plus(hexp, hexp2))
-      | _ => RPlus(hexp, move_parent(ctx, zexp))
-    }
-    | LAsc(zexp: Zexp.t, htyp: Htyp.t) => switch(zexp){
-      | Cursor(hexp: Hexp.t) => Cursor(Asc(hexp, htyp))
-      | _ => LAsc(move_parent(ctx, zexp), htyp)
-    }
-    | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => switch(ztyp){
-      | Cursor(htyp: Htyp.t) => Cursor(Asc(hexp, htyp))
-      | _ => RAsc(hexp, move_parent_ztyp(ctx, ztyp))
-    }
-    | NEHole(zexp: Zexp.t) => switch(zexp){
-      | Cursor(hexp: Hexp.t) => switch(hexp){
-        | EHole => Cursor(EHole)
-        | _ => Cursor(NEHole(hexp))
+
+and move_child_ztyp = (ctx: typctx, t: Ztyp.t, d: Dir.t): Ztyp.t => {
+  switch (t) {
+  | Cursor(htyp: Htyp.t) =>
+    switch (htyp) {
+    | Arrow(htyp1: Htyp.t, htyp2: Htyp.t) =>
+      switch (d) {
+      | Child(c: Child.t) =>
+        switch (c) {
+        | One => LArrow(Cursor(htyp1), htyp2)
+        | Two => RArrow(htyp1, Cursor(htyp2))
+        }
+      | Parent => Cursor(htyp)
       }
-      | _ => NEHole(move_parent(ctx, zexp))
+    | _ => Cursor(htyp)
     }
-  }
+  | LArrow(ztyp: Ztyp.t, htyp: Htyp.t) =>
+    LArrow(move_child_ztyp(ctx, ztyp, d), htyp)
+  | RArrow(htyp: Htyp.t, ztyp: Ztyp.t) =>
+    RArrow(htyp, move_child_ztyp(ctx, ztyp, d))
+  };
+}
+and move_parent = (ctx: typctx, e: Zexp.t): Zexp.t => {
+  switch (e) {
+  | Cursor(hexp: Hexp.t) => Cursor(hexp)
+  | Lam(str: string, zexp: Zexp.t) =>
+    switch (zexp) {
+    | Cursor(hexp: Hexp.t) => Cursor(Lam(str, hexp)) //move cursor up onto Lam
+    | _ => Lam(str, move_parent(ctx, zexp))
+    }
+  | LAp(zexp: Zexp.t, hexp: Hexp.t) =>
+    switch (zexp) {
+    | Cursor(hexp2: Hexp.t) => Cursor(Ap(hexp2, hexp))
+    | _ => LAp(move_parent(ctx, zexp), hexp)
+    }
+  | RAp(hexp: Hexp.t, zexp: Zexp.t) =>
+    switch (zexp) {
+    | Cursor(hexp2: Hexp.t) => Cursor(Ap(hexp, hexp2))
+    | _ => RAp(hexp, move_parent(ctx, zexp))
+    }
+  | LPlus(zexp: Zexp.t, hexp: Hexp.t) =>
+    switch (zexp) {
+    | Cursor(hexp2: Hexp.t) => Cursor(Plus(hexp2, hexp))
+    | _ => LPlus(move_parent(ctx, zexp), hexp)
+    }
+  | RPlus(hexp: Hexp.t, zexp: Zexp.t) =>
+    switch (zexp) {
+    | Cursor(hexp2: Hexp.t) => Cursor(Plus(hexp, hexp2))
+    | _ => RPlus(hexp, move_parent(ctx, zexp))
+    }
+  | LAsc(zexp: Zexp.t, htyp: Htyp.t) =>
+    switch (zexp) {
+    | Cursor(hexp: Hexp.t) => Cursor(Asc(hexp, htyp))
+    | _ => LAsc(move_parent(ctx, zexp), htyp)
+    }
+  | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) =>
+    switch (ztyp) {
+    | Cursor(htyp: Htyp.t) => Cursor(Asc(hexp, htyp))
+    | _ => RAsc(hexp, move_parent_ztyp(ctx, ztyp))
+    }
+  | NEHole(zexp: Zexp.t) =>
+    switch (zexp) {
+    | Cursor(hexp: Hexp.t) =>
+      switch (hexp) {
+      | EHole => Cursor(EHole)
+      | _ => Cursor(NEHole(hexp))
+      }
+    | _ => NEHole(move_parent(ctx, zexp))
+    }
+  };
 }
 
-and move_parent_ztyp = (ctx: typctx, t: Ztyp.t) : Ztyp.t => {
-  switch(t){
-    | Cursor(htyp: Htyp.t) => Cursor(htyp)
-    | LArrow(ztyp: Ztyp.t, htyp: Htyp.t) => switch(ztyp){
-      | Cursor(htyp2: Htyp.t) => Cursor(Arrow(htyp2, htyp))
-      | _ => LArrow(move_parent_ztyp(ctx, t), htyp)
+and move_parent_ztyp = (ctx: typctx, t: Ztyp.t): Ztyp.t => {
+  switch (t) {
+  | Cursor(htyp: Htyp.t) => Cursor(htyp)
+  | LArrow(ztyp: Ztyp.t, htyp: Htyp.t) =>
+    switch (ztyp) {
+    | Cursor(htyp2: Htyp.t) => Cursor(Arrow(htyp2, htyp))
+    | _ => LArrow(move_parent_ztyp(ctx, t), htyp)
     }
-    | RArrow(htyp: Htyp.t, ztyp: Ztyp.t) => switch(ztyp){
-      | Cursor(htyp2: Htyp.t) => Cursor(Arrow(htyp, htyp2))
-      | _ => RArrow(htyp, move_parent_ztyp(ctx, t))
+  | RArrow(htyp: Htyp.t, ztyp: Ztyp.t) =>
+    switch (ztyp) {
+    | Cursor(htyp2: Htyp.t) => Cursor(Arrow(htyp, htyp2))
+    | _ => RArrow(htyp, move_parent_ztyp(ctx, t))
     }
-  }
+  };
 }
 
-and delete = (ctx: typctx, e: Zexp.t) : Zexp.t => {
-  switch(e){
-    | Cursor(_) => Cursor(EHole)
-    | Lam(str: string, zexp: Zexp.t) => Lam(str, delete(ctx, zexp))
-    | LAp(zexp: Zexp.t, hexp: Hexp.t) => LAp(delete(ctx, zexp), hexp)
-    | RAp(hexp: Hexp.t, zexp: Zexp.t) => RAp(hexp, delete(ctx, zexp))
-    | LPlus(zexp: Zexp.t, hexp: Hexp.t) => LPlus(delete(ctx, zexp), hexp)
-    | RPlus(hexp: Hexp.t, zexp: Zexp.t) => RPlus(hexp, delete(ctx, zexp))
-    | LAsc(zexp: Zexp.t, htyp: Htyp.t) => LAsc(delete(ctx, zexp), htyp)
-    | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, delete_typ(ctx, ztyp))
-    | NEHole(zexp: Zexp.t) => NEHole(delete(ctx, zexp))
-  }
+and delete = (ctx: typctx, e: Zexp.t): Zexp.t => {
+  switch (e) {
+  | Cursor(_) => Cursor(EHole)
+  | Lam(str: string, zexp: Zexp.t) => Lam(str, delete(ctx, zexp))
+  | LAp(zexp: Zexp.t, hexp: Hexp.t) => LAp(delete(ctx, zexp), hexp)
+  | RAp(hexp: Hexp.t, zexp: Zexp.t) => RAp(hexp, delete(ctx, zexp))
+  | LPlus(zexp: Zexp.t, hexp: Hexp.t) => LPlus(delete(ctx, zexp), hexp)
+  | RPlus(hexp: Hexp.t, zexp: Zexp.t) => RPlus(hexp, delete(ctx, zexp))
+  | LAsc(zexp: Zexp.t, htyp: Htyp.t) => LAsc(delete(ctx, zexp), htyp)
+  | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, delete_typ(ctx, ztyp))
+  | NEHole(zexp: Zexp.t) => NEHole(delete(ctx, zexp))
+  };
 }
 
-and delete_typ = (ctx: typctx, t: Ztyp.t) : Ztyp.t => {
-  switch(t){
-    | Cursor(_) => Cursor(Hole)
-    | LArrow(ztyp: Ztyp.t, htyp: Htyp.t) => LArrow(delete_typ(ctx, ztyp), htyp)
-    | RArrow(htyp: Htyp.t, ztyp: Ztyp.t) => RArrow(htyp, delete_typ(ctx, ztyp))
-  }
+and delete_typ = (ctx: typctx, t: Ztyp.t): Ztyp.t => {
+  switch (t) {
+  | Cursor(_) => Cursor(Hole)
+  | LArrow(ztyp: Ztyp.t, htyp: Htyp.t) =>
+    LArrow(delete_typ(ctx, ztyp), htyp)
+  | RArrow(htyp: Htyp.t, ztyp: Ztyp.t) =>
+    RArrow(htyp, delete_typ(ctx, ztyp))
+  };
 }
 
-and finish = (ctx: typctx, e: Zexp.t) : Zexp.t => {
-  switch(e){
-    | Cursor(hexp: Hexp.t) => switch(hexp){
-      | NEHole(hexp2: Hexp.t) => Cursor(hexp2)
-      | _ => Cursor(hexp)
+and finish = (ctx: typctx, e: Zexp.t): Zexp.t => {
+  switch (e) {
+  | Cursor(hexp: Hexp.t) =>
+    switch (hexp) {
+    | NEHole(hexp2: Hexp.t) => Cursor(hexp2)
+    | _ => Cursor(hexp)
     }
-    | Lam(str: string, zexp: Zexp.t) => Lam(str, finish(ctx, zexp))
-    | LAp(zexp: Zexp.t, hexp: Hexp.t) => LAp(finish(ctx, zexp), hexp)
-    | RAp(hexp: Hexp.t, zexp: Zexp.t) => RAp(hexp, finish(ctx, zexp))
-    | LPlus(zexp: Zexp.t, hexp: Hexp.t) => LPlus(finish(ctx, zexp), hexp)
-    | RPlus(hexp: Hexp.t, zexp: Zexp.t) => RPlus(hexp, finish(ctx, zexp))
-    | LAsc(zexp: Zexp.t, htyp: Htyp.t) => LAsc(finish(ctx, zexp), htyp)
-    | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, delete_typ(ctx, ztyp))
-    | NEHole(zexp: Zexp.t) => NEHole(finish(ctx, zexp))
-  }
+  | Lam(str: string, zexp: Zexp.t) => Lam(str, finish(ctx, zexp))
+  | LAp(zexp: Zexp.t, hexp: Hexp.t) => LAp(finish(ctx, zexp), hexp)
+  | RAp(hexp: Hexp.t, zexp: Zexp.t) => RAp(hexp, finish(ctx, zexp))
+  | LPlus(zexp: Zexp.t, hexp: Hexp.t) => LPlus(finish(ctx, zexp), hexp)
+  | RPlus(hexp: Hexp.t, zexp: Zexp.t) => RPlus(hexp, finish(ctx, zexp))
+  | LAsc(zexp: Zexp.t, htyp: Htyp.t) => LAsc(finish(ctx, zexp), htyp)
+  | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, delete_typ(ctx, ztyp))
+  | NEHole(zexp: Zexp.t) => NEHole(finish(ctx, zexp))
+  };
 }
 
 and ana_action =

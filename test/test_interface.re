@@ -4,7 +4,7 @@ module Hazelnut = Hazelnut_lib.Hazelnut;
 let hexp_eq = (he1: Hazelnut.Hexp.t, he2: Hazelnut.Hexp.t): bool =>
   Hazelnut.Hexp.compare(he1, he2) == 0;
 
-let hexp_print = (_: Hazelnut.Hexp.t): string => "hexp"//Hazelnut.Hexp.show(e);
+let hexp_print = (e: Hazelnut.Hexp.t): string => Hazelnut.Hexp.show(e);
 
 let hexp_typ = testable(Fmt.using(hexp_print, Fmt.string), hexp_eq);
 
@@ -18,7 +18,7 @@ let htyp_eq =
 
 let htyp_print = (ht: option(Hazelnut.Htyp.t)): string =>
   switch (ht) {
-  | Some(_) => "htyp"//Hazelnut.Htyp.show(t)
+  | Some(t) => Hazelnut.Htyp.show(t)
   | _ => "None"
   };
 
@@ -34,7 +34,7 @@ let zexp_eq =
 
 let zexp_print = (ze: option(Hazelnut.Zexp.t)): string =>
   switch (ze) {
-  | Some(_) => "zexp"//Hazelnut.Zexp.show(e)
+  | Some(e) => Hazelnut.Zexp.show(e)
   | _ => "None"
   };
 
@@ -55,7 +55,7 @@ let zexp_htyp_eq =
 let zexp_htyp_print =
     (ze_t: option((Hazelnut.Zexp.t, Hazelnut.Htyp.t))): string =>
   switch (ze_t) {
-  | Some((_, _)) => "zexp_htyp" //Hazelnut.Zexp.show(e) // have to show both somehow
+  | Some((e, _)) => Hazelnut.Zexp.show(e) // have to show both somehow
   | _ => "None"
   };
 
