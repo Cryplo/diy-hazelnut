@@ -216,7 +216,14 @@ let rec syn_action =
     | Some(contents) => Some((new_zexp, contents))
     | None => None
     };
-  | _ => raise(Unimplemented)
+  | Construct(shape: Shape.t) => {
+    let new_zexp = construct(ctx, e, shape);
+    let syn_typ = syn(ctx, erase_exp(new_zexp));
+    switch (syn_typ) {
+    | Some(contents) => Some((new_zexp, contents))
+    | None => None
+    };
+  }
   };
 }
 
@@ -395,6 +402,34 @@ and finish = (ctx: typctx, e: Zexp.t): Zexp.t => {
   | NEHole(zexp: Zexp.t) => NEHole(finish(ctx, zexp))
   };
 }
+
+and construct = (ctx: typctx, e: Zexp.t, shape: Shape.t): Zexp.t => {
+  switch(e){
+    | Cursor(contents: Hexp.t) => switch(shape){
+      | Arrow => raise(Unimplemented) // this should be for tpyes not expressions?
+      | Num =>  raise(Unimplemented) // same as above
+      | Asc => switch(syn(ctx, contents)){
+        | Some(htyp: Htyp.t) => RAsc(contents, Cursor(htyp))
+        | None => RAsc(contents, Cursor(Hole))
+      }
+      | Var(str: string) => Cursor(Var(str))
+      | Lam(str: string) => RAsc(Lam(str, EHole), LArrow(Cursor(Hole), Hole))
+      | Ap => switch(syn(ctx, contents)) //synthesize a type then check if it is of arrow type to see if i need to put it in a hole or not
+      | _ => raise(Unimplemented)
+    }
+    | Lam(str: string, zexp: Zexp.t) => Lam(str, construct(ctx, zexp, shape))
+    | LAp(zexp: Zexp.t, hexp: Hexp.t) => LAp(construct(ctx, zexp, shape), hexp)
+    | RAp(hexp: Hexp.t, zexp: Zexp.t) => RAp(hexp, construct(ctx, zexp, shape))
+    | LPlus(zexp: Zexp.t, hexp: Hexp.t) => LPlus(construct(ctx, zexp, shape), hexp)
+    | RPlus(hexp: Hexp.t, zexp: Zexp.t) => RPlus(hexp, construct(ctx, zexp, shape))
+    | LAsc(zexp: Zexp.t, htyp: Htyp.t) => LAsc(construct(ctx, zexp, shape), htyp)
+    //| RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, delete_typ(ctx, ztyp))
+    | NEHole(zexp: Zexp.t) => NEHole(construct(ctx, zexp, shape))
+    | _ => raise(Unimplemented)
+  }
+}
+
+//add a recurse to cursor helper function that I can just plug in a function in for later
 
 and ana_action =
     (ctx: typctx, e: Zexp.t, a: Action.t, t: Htyp.t): option(Zexp.t) => {
