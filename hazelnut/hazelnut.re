@@ -120,7 +120,7 @@ let rec syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
     switch (syn(ctx, hexp1)) {
     | Some(t1: Htyp.t) =>
       switch (match_arrow(t1)) {
-      | Arrow(t2: Htyp.t, t3: Htyp.t) =>
+      | Some(Arrow(t2: Htyp.t, t3: Htyp.t)) =>
         ana(ctx, hexp2, t2) ? Some(t3) : None
       | _ => None
       }
@@ -153,11 +153,11 @@ and consistent = (t1: Htyp.t, t2: Htyp.t): bool => {
   };
 }
 
-and match_arrow = (t: Htyp.t): Htyp.t => {
+and match_arrow = (t: Htyp.t): option(Htyp.t) => {
   switch (t) {
-  | Arrow(t1: Htyp.t, t2: Htyp.t) => Arrow(t1, t2)
-  | Hole => Arrow(Hole, Hole)
-  | _ => raise(Unimplemented)
+  | Arrow(t1: Htyp.t, t2: Htyp.t) => Some(Arrow(t1, t2))
+  | Hole => Some(Arrow(Hole, Hole))
+  | _ => None
   };
 }
 
@@ -166,10 +166,10 @@ and ana = (ctx: typctx, e: Hexp.t, t: Htyp.t): bool => {
   //Implement 2a
   | Lam(str: string, hexp: Hexp.t) =>
     switch (match_arrow(t)) {
-    | Arrow(t1: Htyp.t, t2: Htyp.t) =>
+    | Some(Arrow(t1: Htyp.t, t2: Htyp.t)) =>
       let newctx = TypCtx.add(str, t1, ctx);
       ana(newctx, hexp, t2);
-    | _ => raise(Unimplemented)
+    | _ => false
     }
   | _ =>
     switch (syn(ctx, e)) {
@@ -216,14 +216,13 @@ let rec syn_action =
     | Some(contents) => Some((new_zexp, contents))
     | None => None
     };
-  | Construct(shape: Shape.t) => {
+  | Construct(shape: Shape.t) =>
     let new_zexp = construct(ctx, e, shape);
     let syn_typ = syn(ctx, erase_exp(new_zexp));
     switch (syn_typ) {
     | Some(contents) => Some((new_zexp, contents))
     | None => None
     };
-  }
   };
 }
 
@@ -404,29 +403,47 @@ and finish = (ctx: typctx, e: Zexp.t): Zexp.t => {
 }
 
 and construct = (ctx: typctx, e: Zexp.t, shape: Shape.t): Zexp.t => {
-  switch(e){
-    | Cursor(contents: Hexp.t) => switch(shape){
-      | Arrow => raise(Unimplemented) // this should be for tpyes not expressions?
-      | Num =>  raise(Unimplemented) // same as above
-      | Asc => switch(syn(ctx, contents)){
-        | Some(htyp: Htyp.t) => RAsc(contents, Cursor(htyp))
-        | None => RAsc(contents, Cursor(Hole))
+  switch (e) {
+  | Cursor(contents: Hexp.t) =>
+    switch (shape) {
+    | Arrow => raise(Unimplemented) // this should be for tpyes not expressions?
+    | Num => raise(Unimplemented) // same as above
+    | Asc =>
+      switch (syn(ctx, contents)) {
+      | Some(htyp: Htyp.t) => RAsc(contents, Cursor(htyp))
+      | None => RAsc(contents, Cursor(Hole))
       }
-      | Var(str: string) => Cursor(Var(str))
-      | Lam(str: string) => RAsc(Lam(str, EHole), LArrow(Cursor(Hole), Hole))
-      | Ap => switch(syn(ctx, contents)) //synthesize a type then check if it is of arrow type to see if i need to put it in a hole or not
-      | _ => raise(Unimplemented)
-    }
-    | Lam(str: string, zexp: Zexp.t) => Lam(str, construct(ctx, zexp, shape))
-    | LAp(zexp: Zexp.t, hexp: Hexp.t) => LAp(construct(ctx, zexp, shape), hexp)
-    | RAp(hexp: Hexp.t, zexp: Zexp.t) => RAp(hexp, construct(ctx, zexp, shape))
-    | LPlus(zexp: Zexp.t, hexp: Hexp.t) => LPlus(construct(ctx, zexp, shape), hexp)
-    | RPlus(hexp: Hexp.t, zexp: Zexp.t) => RPlus(hexp, construct(ctx, zexp, shape))
-    | LAsc(zexp: Zexp.t, htyp: Htyp.t) => LAsc(construct(ctx, zexp, shape), htyp)
-    //| RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, delete_typ(ctx, ztyp))
-    | NEHole(zexp: Zexp.t) => NEHole(construct(ctx, zexp, shape))
+    | Var(str: string) => Cursor(Var(str))
+    | Lam(str: string) =>
+      RAsc(Lam(str, EHole), LArrow(Cursor(Hole), Hole))
+    // synthesize the type for matching
+    | Ap =>
+      switch (syn(ctx, contents)) {
+      // actually match the type to arrow type
+      | Some(htyp: Htyp.t) =>
+        switch (match_arrow(htyp)) {
+        | Some(_) => RAp(contents, Cursor(EHole))
+        | None => RAp(NEHole(contents), Cursor(EHole))
+        }
+      | None => RAp(NEHole(contents), Cursor(EHole))
+      } // synthesize a type then check if it is of arrow type to see if i need to put it in a hole or not
     | _ => raise(Unimplemented)
-  }
+    }
+  | Lam(str: string, zexp: Zexp.t) => Lam(str, construct(ctx, zexp, shape))
+  | LAp(zexp: Zexp.t, hexp: Hexp.t) =>
+    LAp(construct(ctx, zexp, shape), hexp)
+  | RAp(hexp: Hexp.t, zexp: Zexp.t) =>
+    RAp(hexp, construct(ctx, zexp, shape))
+  | LPlus(zexp: Zexp.t, hexp: Hexp.t) =>
+    LPlus(construct(ctx, zexp, shape), hexp)
+  | RPlus(hexp: Hexp.t, zexp: Zexp.t) =>
+    RPlus(hexp, construct(ctx, zexp, shape))
+  | LAsc(zexp: Zexp.t, htyp: Htyp.t) =>
+    LAsc(construct(ctx, zexp, shape), htyp)
+  //| RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, delete_typ(ctx, ztyp))
+  | NEHole(zexp: Zexp.t) => NEHole(construct(ctx, zexp, shape))
+  | _ => raise(Unimplemented)
+  };
 }
 
 //add a recurse to cursor helper function that I can just plug in a function in for later
