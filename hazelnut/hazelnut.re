@@ -427,7 +427,12 @@ and construct = (ctx: typctx, e: Zexp.t, shape: Shape.t): Zexp.t => {
         }
       | None => RAp(NEHole(contents), Cursor(EHole))
       } // synthesize a type then check if it is of arrow type to see if i need to put it in a hole or not
-    | _ => raise(Unimplemented)
+    | Lit(num: int) => Cursor(Lit(num))
+    | Plus => switch(syn(ctx, contents)){
+      | Some(Num) => RPlus(contents, Cursor(EHole))
+      | _ => RPlus(NEHole(contents), Cursor(EHole))
+    }
+    | NEHole => NEHole(Cursor(contents))
     }
   | Lam(str: string, zexp: Zexp.t) => Lam(str, construct(ctx, zexp, shape))
   | LAp(zexp: Zexp.t, hexp: Hexp.t) =>
