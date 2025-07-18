@@ -406,7 +406,7 @@ and construct = (ctx: typctx, e: Zexp.t, shape: Shape.t): Zexp.t => {
   switch (e) {
   | Cursor(contents: Hexp.t) =>
     switch (shape) {
-    | Arrow => raise(Unimplemented) // this should be for tpyes not expressions?
+    | Arrow => raise(Unimplemented) // this should be for tpyes not expressions
     | Num => raise(Unimplemented) // same as above
     | Asc =>
       switch (syn(ctx, contents)) {
@@ -445,10 +445,22 @@ and construct = (ctx: typctx, e: Zexp.t, shape: Shape.t): Zexp.t => {
     RPlus(hexp, construct(ctx, zexp, shape))
   | LAsc(zexp: Zexp.t, htyp: Htyp.t) =>
     LAsc(construct(ctx, zexp, shape), htyp)
-  //| RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, delete_typ(ctx, ztyp))
+  | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, construct_typ(ctx, ztyp, shape))
   | NEHole(zexp: Zexp.t) => NEHole(construct(ctx, zexp, shape))
-  | _ => raise(Unimplemented)
+  //| _ => raise(Unimplemented)
   };
+}
+
+and construct_typ = (ctx: typctx, t: Ztyp.t, shape: Shape.t): Ztyp.t => {
+  switch(t){
+    | Cursor(contents: Htyp.t) => switch(shape){
+      | Arrow => RArrow(contents, Cursor(Hole))
+      | Num => Cursor(Num)
+      | _ => raise(Unimplemented)
+    }
+    | LArrow(ztyp: Ztyp.t, _) => construct_typ(ctx, ztyp, shape)
+    | RArrow(_, ztyp: Ztyp.t) => construct_typ(ctx, ztyp, shape)
+  }
 }
 
 //add a recurse to cursor helper function that I can just plug in a function in for later
