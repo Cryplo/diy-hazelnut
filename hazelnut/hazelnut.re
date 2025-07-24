@@ -187,6 +187,7 @@ let rec syn_action =
   switch (a) {
   | Move(d: Dir.t) =>
     switch (d) {
+      //rule 7a
     | Child(_) =>
       let new_zexp = move_child(ctx, e, d);
       let syn_typ = syn(ctx, erase_exp(new_zexp));
@@ -224,6 +225,42 @@ let rec syn_action =
     | None => None
     };
   };
+}
+
+and ana_action =
+    (ctx: typctx, e: Zexp.t, a: Action.t, t: Htyp.t): option(Zexp.t) => {
+  switch (a) {
+  // rule 7b
+  | Move(d: Dir.t) =>
+    switch (d) {
+    | Child(_) =>
+      let new_zexp = move_child(ctx, e, d);
+      subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
+    | Parent =>
+      let new_zexp = move_parent(ctx, e);
+      subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
+    }
+  | Del =>
+    let new_zexp = delete(ctx, e);
+    subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
+  | Finish =>
+    let new_zexp = finish(ctx, e);
+    subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
+  | Construct(shape: Shape.t) =>
+    let new_zexp = construct(ctx, e, shape);
+    subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
+  };
+}
+
+//rule 5
+and subsumption = (ctx: typctx, e: Zexp.t, a: Action.t, t: Htyp.t): bool => {
+  switch(syn(ctx, erase_exp(e))){
+    | Some(_) => switch(syn_action(ctx, (e, t), a)){
+      | Some((_, htyp: Htyp.t)) => consistent(t, htyp)
+      | None => false
+    };
+    | None => false
+  }
 }
 
 // Need to keep the action argument to keep track of first or second child
@@ -428,10 +465,11 @@ and construct = (ctx: typctx, e: Zexp.t, shape: Shape.t): Zexp.t => {
       | None => RAp(NEHole(contents), Cursor(EHole))
       } // synthesize a type then check if it is of arrow type to see if i need to put it in a hole or not
     | Lit(num: int) => Cursor(Lit(num))
-    | Plus => switch(syn(ctx, contents)){
+    | Plus =>
+      switch (syn(ctx, contents)) {
       | Some(Num) => RPlus(contents, Cursor(EHole))
       | _ => RPlus(NEHole(contents), Cursor(EHole))
-    }
+      }
     | NEHole => NEHole(Cursor(contents))
     }
   | Lam(str: string, zexp: Zexp.t) => Lam(str, construct(ctx, zexp, shape))
@@ -445,34 +483,32 @@ and construct = (ctx: typctx, e: Zexp.t, shape: Shape.t): Zexp.t => {
     RPlus(hexp, construct(ctx, zexp, shape))
   | LAsc(zexp: Zexp.t, htyp: Htyp.t) =>
     LAsc(construct(ctx, zexp, shape), htyp)
-  | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) => RAsc(hexp, construct_typ(ctx, ztyp, shape))
+  | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) =>
+    RAsc(hexp, construct_typ(ctx, ztyp, shape))
   | NEHole(zexp: Zexp.t) => NEHole(construct(ctx, zexp, shape))
   //| _ => raise(Unimplemented)
   };
 }
 
-and construct_typ = (ctx: typctx, t: Ztyp.t, shape: Shape.t): Ztyp.t => {
-  switch(t){
-    | Cursor(contents: Htyp.t) => switch(shape){
-      | Arrow => RArrow(contents, Cursor(Hole))
-      | Num => Cursor(Num)
-      | _ => raise(Unimplemented)
+and construct_ana = (ctx: typctx, e: Zexp.t, t: Htyp.t, shape: Shape.t): Zexp.t => {
+  switch(shape){
+    | Cursor(contents: Hexp.t) => switch(contents){
+      | Asc => RAsc(contents, Cursor(t))
+      | _ => construct(ctx, Cursor(contents), shape)
     }
-    | LArrow(ztyp: Ztyp.t, _) => construct_typ(ctx, ztyp, shape)
-    | RArrow(_, ztyp: Ztyp.t) => construct_typ(ctx, ztyp, shape)
+    | _ => raise(Unimplemented) // recurse into zipper structure
   }
 }
 
-//add a recurse to cursor helper function that I can just plug in a function in for later
-
-and ana_action =
-    (ctx: typctx, e: Zexp.t, a: Action.t, t: Htyp.t): option(Zexp.t) => {
-  // Used to suppress unused variable warnings
-  // Okay to remove
-  let _ = ctx;
-  let _ = e;
-  let _ = a;
-  let _ = t;
-
-  raise(Unimplemented);
-};
+and construct_typ = (ctx: typctx, t: Ztyp.t, shape: Shape.t): Ztyp.t => {
+  switch (t) {
+  | Cursor(contents: Htyp.t) =>
+    switch (shape) {
+    | Arrow => RArrow(contents, Cursor(Hole))
+    | Num => Cursor(Num)
+    | _ => raise(Unimplemented)
+    }
+  | LArrow(ztyp: Ztyp.t, _) => construct_typ(ctx, ztyp, shape)
+  | RArrow(_, ztyp: Ztyp.t) => construct_typ(ctx, ztyp, shape)
+  };
+} /*add a recurse to cursor helper function that I can just plug in a function in for late*/;
