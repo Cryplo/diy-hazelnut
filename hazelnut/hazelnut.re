@@ -218,7 +218,7 @@ let rec syn_action =
     | None => None
     };
   | Construct(shape: Shape.t) =>
-    let new_zexp = construct(ctx, e, shape);
+    let new_zexp = construct(ctx, (e, t), shape);
     let syn_typ = syn(ctx, erase_exp(new_zexp));
     switch (syn_typ) {
     | Some(contents) => Some((new_zexp, contents))
@@ -235,24 +235,32 @@ and ana_action =
     switch (d) {
     | Child(_) =>
       let new_zexp = move_child(ctx, e, d);
-      subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
+      Some(new_zexp);
+      //subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
     | Parent =>
       let new_zexp = move_parent(ctx, e);
-      subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
+      Some(new_zexp);
+      //subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
     }
   | Del =>
     let new_zexp = delete(ctx, e);
-    subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
+    Some(new_zexp);
+    //subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
   | Finish =>
     let new_zexp = finish(ctx, e);
-    subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
+    switch(syn(ctx, erase_exp(new_zexp))){
+      | Some(_) => ana(ctx, erase_exp(new_zexp), t) ? Some(new_zexp) : None
+      | _ => None
+    }
+    //subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
   | Construct(shape: Shape.t) =>
-    let new_zexp = construct(ctx, e, shape);
-    subsumption(ctx, e, a, t) ? Some(new_zexp) : None;
+    let new_zexp = construct_ana(ctx, e, t, shape);
+    Some(new_zexp);
   };
 }
 
 //rule 5
+/*
 and subsumption = (ctx: typctx, e: Zexp.t, a: Action.t, t: Htyp.t): bool => {
   switch(syn(ctx, erase_exp(e))){
     | Some(_) => switch(syn_action(ctx, (e, t), a)){
@@ -261,7 +269,7 @@ and subsumption = (ctx: typctx, e: Zexp.t, a: Action.t, t: Htyp.t): bool => {
     };
     | None => false
   }
-}
+}*/
 
 // Need to keep the action argument to keep track of first or second child
 and move_child = (ctx: typctx, e: Zexp.t, d: Dir.t): Zexp.t => {
@@ -425,7 +433,7 @@ and finish = (ctx: typctx, e: Zexp.t): Zexp.t => {
   switch (e) {
   | Cursor(hexp: Hexp.t) =>
     switch (hexp) {
-    | NEHole(hexp2: Hexp.t) => Cursor(hexp2)
+    | NEHole(hexp2: Hexp.t) => finish(ctx, Cursor(hexp2))
     | _ => Cursor(hexp)
     }
   | Lam(str: string, zexp: Zexp.t) => Lam(str, finish(ctx, zexp))
@@ -439,7 +447,7 @@ and finish = (ctx: typctx, e: Zexp.t): Zexp.t => {
   };
 }
 
-and construct = (ctx: typctx, e: Zexp.t, shape: Shape.t): Zexp.t => {
+and construct = (ctx: typctx, (e: Zexp.t, t: Htyp.t), shape: Shape.t): Zexp.t => {
   switch (e) {
   | Cursor(contents: Hexp.t) =>
     switch (shape) {
@@ -450,7 +458,7 @@ and construct = (ctx: typctx, e: Zexp.t, shape: Shape.t): Zexp.t => {
       | Some(htyp: Htyp.t) => RAsc(contents, Cursor(htyp))
       | None => RAsc(contents, Cursor(Hole))
       }
-    | Var(str: string) => Cursor(Var(str))
+    | Var(str: string) => consistent(TypCtx.find(str, ctx), t) ? Cursor(Var(str)) : NEHole(Cursor(Var(str)))
     | Lam(str: string) =>
       RAsc(Lam(str, EHole), LArrow(Cursor(Hole), Hole))
     // synthesize the type for matching
@@ -472,31 +480,63 @@ and construct = (ctx: typctx, e: Zexp.t, shape: Shape.t): Zexp.t => {
       }
     | NEHole => NEHole(Cursor(contents))
     }
-  | Lam(str: string, zexp: Zexp.t) => Lam(str, construct(ctx, zexp, shape))
+  | Lam(str: string, zexp: Zexp.t) => 
+    switch(t){
+      | Arrow(_, htyp2: Htyp.t) => Lam(str, construct(ctx, (zexp, htyp2), shape))
+      | _ => raise(Unimplemented)
+    }
   | LAp(zexp: Zexp.t, hexp: Hexp.t) =>
-    LAp(construct(ctx, zexp, shape), hexp)
+    LAp(construct(ctx, (zexp, t), shape), hexp)
   | RAp(hexp: Hexp.t, zexp: Zexp.t) =>
-    RAp(hexp, construct(ctx, zexp, shape))
+    RAp(hexp, construct(ctx, (zexp, t), shape))
   | LPlus(zexp: Zexp.t, hexp: Hexp.t) =>
-    LPlus(construct(ctx, zexp, shape), hexp)
+    LPlus(construct(ctx, (zexp, t), shape), hexp)
   | RPlus(hexp: Hexp.t, zexp: Zexp.t) =>
-    RPlus(hexp, construct(ctx, zexp, shape))
+    RPlus(hexp, construct(ctx, (zexp, t), shape))
   | LAsc(zexp: Zexp.t, htyp: Htyp.t) =>
-    LAsc(construct(ctx, zexp, shape), htyp)
+    LAsc(construct(ctx, (zexp, htyp), shape), htyp)
   | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) =>
     RAsc(hexp, construct_typ(ctx, ztyp, shape))
-  | NEHole(zexp: Zexp.t) => NEHole(construct(ctx, zexp, shape))
+  | NEHole(zexp: Zexp.t) => NEHole(construct(ctx, (zexp, t), shape))
   //| _ => raise(Unimplemented)
   };
 }
 
+
 and construct_ana = (ctx: typctx, e: Zexp.t, t: Htyp.t, shape: Shape.t): Zexp.t => {
-  switch(shape){
-    | Cursor(contents: Hexp.t) => switch(contents){
+  switch(e){
+    | Cursor(contents: Hexp.t) => switch(shape){
       | Asc => RAsc(contents, Cursor(t))
-      | _ => construct(ctx, Cursor(contents), shape)
+      | Var(str: string) => consistent(TypCtx.find(str, ctx), t) ? Cursor(Var(str)) : NEHole(Cursor(Var(str)))
+      | Lam(str: string) => switch(match_arrow(t)){
+        | Some(Arrow(_, _)) => Lam(str, Cursor(EHole))
+        | _ => NEHole(RAsc(Lam(str, EHole), LArrow(Cursor(Hole), Hole)))
+      }
+      | Lit(num: int) =>
+        switch (t) {
+          | Num => Cursor(Lit(num))
+          | _ => NEHole(Cursor((Lit(num))))
+        }
+      | _ => construct(ctx, (Cursor(contents), t), shape)
     }
-    | _ => raise(Unimplemented) // recurse into zipper structure
+    // recurse into zipper structure
+    | Lam(str: string, zexp: Zexp.t) => Lam(str, construct_ana(ctx, zexp, t, shape))
+    | LAp(zexp: Zexp.t, hexp: Hexp.t) =>
+      LAp(construct_ana(ctx, zexp, t, shape), hexp)
+    | RAp(hexp: Hexp.t, zexp: Zexp.t) =>
+      RAp(hexp, construct_ana(ctx, zexp, t, shape))
+    | LPlus(zexp: Zexp.t, hexp: Hexp.t) =>
+      LPlus(construct_ana(ctx, zexp, t, shape), hexp)
+    | RPlus(hexp: Hexp.t, zexp: Zexp.t) =>
+      RPlus(hexp, construct_ana(ctx, zexp, t, shape))
+    | LAsc(zexp: Zexp.t, htyp: Htyp.t) =>
+      switch(t){
+        | Arrow(htyp1, _) => LAsc(construct_ana(ctx, zexp, htyp1, shape), htyp)
+        | _ => LAsc(construct_ana(ctx, zexp, t, shape), htyp)
+      }
+    | RAsc(hexp: Hexp.t, ztyp: Ztyp.t) =>
+      RAsc(hexp, construct_typ(ctx, ztyp, shape))
+    | NEHole(zexp: Zexp.t) => NEHole(construct_ana(ctx, zexp, t, shape))
   }
 }
 
@@ -508,7 +548,7 @@ and construct_typ = (ctx: typctx, t: Ztyp.t, shape: Shape.t): Ztyp.t => {
     | Num => Cursor(Num)
     | _ => raise(Unimplemented)
     }
-  | LArrow(ztyp: Ztyp.t, _) => construct_typ(ctx, ztyp, shape)
-  | RArrow(_, ztyp: Ztyp.t) => construct_typ(ctx, ztyp, shape)
+  | LArrow(ztyp: Ztyp.t, htyp: Htyp.t) => LArrow(construct_typ(ctx, ztyp, shape), htyp)
+  | RArrow(htyp: Htyp.t, ztyp: Ztyp.t) => RArrow(htyp, construct_typ(ctx, ztyp, shape))
   };
 } /*add a recurse to cursor helper function that I can just plug in a function in for late*/;
