@@ -114,7 +114,10 @@ let rec erase_exp = (e: Zexp.t): Hexp.t => {
 let rec syn = (ctx: typctx, e: Hexp.t): option(Htyp.t) => {
   switch (e) {
   | Var(str: string) => TypCtx.find_opt(str, ctx) //Implement rule 1a
-  | Lam(_, hexp: Hexp.t) => syn(ctx, hexp)
+  | Lam(_, hexp: Hexp.t) => switch(hexp){
+    | EHole => Some(EHole)
+    | _ => None
+  }
   // Implement rule 1b
   | Ap(hexp1: Hexp.t, hexp2: Hexp.t) =>
     switch (syn(ctx, hexp1)) {
